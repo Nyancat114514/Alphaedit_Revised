@@ -103,12 +103,27 @@ def generate_fast(
 
     with torch.no_grad():
         while input_ids.size(1) < max_out_len:  # while not exceeding max output length
+            # --- 开始修改 ---
+            current_input_ids_for_model = input_ids[:, cur_context]
+            if past_key_values is None:
+                # 首次迭代，没有 past_key_values
+                attention_mask_for_model = attention_mask[:, cur_context]
+            else:
+                # 后续迭代，有 past_key_values
+                # attention_mask 需要覆盖到当前生成的所有有效 token
+                # 其长度应为 past_kv_length + 新 token 的长度
+                # LLaMA 的 past_key_values[0][0] 通常是 (batch_size, num_heads, past_seq_len, head_dim)
+                past_kv_len = past_key_values[0][0].shape[-2] 
+                current_total_seq_len_for_this_step = past_kv_len + current_input_ids_for_model.shape[1]
+                attention_mask_for_model = attention_mask[:, :current_total_seq_len_for_this_step]
+            
             model_out = model(
-                input_ids=input_ids[:, cur_context],
-                attention_mask=attention_mask[:, cur_context],
+                input_ids=current_input_ids_for_model, # 通常是 (batch_size, 1) 对应新 token
+                attention_mask=attention_mask_for_model, # 调整后的 attention_mask
                 past_key_values=past_key_values,
                 use_cache=True,
             )
+            # --- 结束修改 ---
             logits, past_key_values = model_out.logits, model_out.past_key_values
             softmax_out = torch.nn.functional.softmax(logits[:, -1, :], dim=1)
 
