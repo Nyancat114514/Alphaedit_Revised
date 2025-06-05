@@ -36,6 +36,9 @@ from util.globals import *
 from nse import NSEHyperParams
 from nse.nse_main import apply_nse_to_model
 from glue_eval.glue_eval import GLUEEval
+
+from pathlib import Path
+
 ALG_DICT = {
     "AlphaEdit": (AlphaEditHyperParams, apply_AlphaEdit_to_model),
     "MEMIT_seq": (MEMITHyperParams, apply_memit_seq_to_model),
@@ -205,8 +208,9 @@ def main(
         del W_out
     if alg_name == "AlphaEdit":
         for i, layer in enumerate(hparams.layers):
-            P[i,:,:] = get_project(model,tok,layer,hparams)
+            P[i,:,:] = get_project(model,tok,layer,hparams, run_dir)
         torch.save(P, "null_space_project.pt")
+        torch.save(P, run_dir / "weights" / "all_layers_P.pt")
     # hs = get_module_input_output_at_words(
     #         model,
     #         tok,
@@ -245,6 +249,17 @@ def main(
         etc_args = dict(cache_template=cache_template) if any(alg in alg_name for alg in ["ROME", "MEMIT","AlphaEdit", "MEMIT_seq", "MEMIT_prune", "NSE"]) else dict()
         seq_args = dict(cache_c=cache_c) if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]) else dict()
         nc_args = dict(P = P) if any(alg in alg_name for alg in ["AlphaEdit"]) else dict()
+
+        # 新增 run_dir 和 chunk_idx (cnt) 到传递给 apply_algo 的参数中
+        algo_passthrough_args = {
+            **args_conserve_memory,
+            **etc_args,
+            **seq_args,
+            **nc_args,
+            "run_dir": run_dir,    # <--- 新增
+            "chunk_idx": cnt       # <--- 新增
+        }
+
         if cnt == 0 and args.downstream_eval_steps > 0:#do initial GLUE EVAL WITH ORIGINAL MODEL
             glue_results = {'edit_num': -1}
 
@@ -272,10 +287,11 @@ def main(
                     )
                 ],
                 hparams,
-                **args_conserve_memory,
-                **etc_args,
-                **seq_args,
-                **nc_args,
+                # **args_conserve_memory,
+                # **etc_args,
+                # **seq_args,
+                # **nc_args,
+                **algo_passthrough_args
             )
         elif alg_name == "MEMIT_prune":
             if cnt == 0:
@@ -423,7 +439,11 @@ def main(
         #         nethook.get_parameter(model, k)[...] = v.to("cuda")
 
         print("Evaluation took", time() - start)
-def get_project(model, tok, layer, hparams):
+def get_project(model, tok, layer, hparams, run_dir):
+    weights_dir = Path(run_dir) / "weights" # 定义 weights 目录
+    weights_dir.mkdir(parents=True, exist_ok=True) # 创建目录
+
+
     force_recompute = False
     cov = get_cov(
         model,
@@ -436,11 +456,27 @@ def get_project(model, tok, layer, hparams):
         hparams.mom2_dtype,
         force_recompute=force_recompute,
     ).cpu()
+
+    # 保存 K0K0T (cov)
+    cov_save_path = weights_dir / f"layer_{layer:02d}_K0K0T.pt"
+    torch.save(cov, cov_save_path)
+    print(f"Saved K0K0T for layer {layer} to {cov_save_path}")
+
+    
+
     U, S, _ = torch.linalg.svd(cov, full_matrices=False)
     threshold = hparams.nullspace_threshold
     small_singular_indices = (S < threshold).nonzero(as_tuple=True)[0]
-    print(len(small_singular_indices))
-    return U[:, small_singular_indices] @ U[:, small_singular_indices].T
+    print(f"Layer {layer}: Found {len(small_singular_indices)} singular values below threshold {threshold}")
+  
+    P_layer = U[:, small_singular_indices] @ U[:, small_singular_indices].T
+    # 保存 P
+    P_save_path = weights_dir / f"layer_{layer:02d}_P.pt"
+    torch.save(P_layer, P_save_path)
+    print(f"Saved P for layer {layer} to {P_save_path}")
+
+    return P_layer
+
 def window(seq, n=2):
     "Returns a sliding window (of width n) over data from the iterable"
     "   s -> (s0,s1,...s[n-1]), (s1,s2,...,sn), ...                   "
