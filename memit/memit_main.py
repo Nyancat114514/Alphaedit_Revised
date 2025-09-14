@@ -15,6 +15,7 @@ from util.globals import *
 from .compute_ks import compute_ks
 from .compute_z import compute_z, get_module_input_output_at_words, find_fact_lookup_idx
 from .memit_hparams import MEMITHyperParams
+from pathlib import Path 
 
 # Cache variable(s)
 CONTEXT_TEMPLATES_CACHE = None
@@ -29,6 +30,8 @@ def apply_memit_to_model(
     copy=False,
     return_orig_weights=False,
     cache_template: Optional[str] = None,
+    run_dir: Optional[Path] = None,
+    chunk_idx: Optional[int] = None 
 ) -> Tuple[AutoModelForCausalLM, Dict[str, Any]]:
     """
     Returns a model with the desired changes.
@@ -41,7 +44,7 @@ def apply_memit_to_model(
     if copy:
         model = deepcopy(model)
 
-    deltas = execute_memit(model, tok, requests, hparams, cache_template=cache_template)
+    deltas = execute_memit(model, tok, requests, hparams, cache_template=cache_template, run_dir=run_dir, chunk_idx=chunk_idx)
 
     with torch.no_grad():
         for w_name, (key_mat, val_mat) in deltas.items():
@@ -66,6 +69,8 @@ def execute_memit(
     requests: List[Dict],
     hparams: MEMITHyperParams,
     cache_template: Optional[str] = None,
+    run_dir: Optional[Path] = None,
+    chunk_idx: Optional[int] = None 
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the MEMIT update algorithm for the specified update at the specified layer
@@ -148,9 +153,42 @@ def execute_memit(
                 print(f"Cached k/v pair at {cache_fname}")
     zs = torch.stack(z_list, dim=1)
 
+    # 为当前 chunk 创建存储目录
+    current_chunk_weights_dir = None
+    if run_dir is not None and chunk_idx is not None:
+        weights_main_dir = Path(run_dir) / "weights" # 主 "weights" 目录
+        current_chunk_weights_dir = weights_main_dir / f"chunk_{chunk_idx:03d}"
+        current_chunk_weights_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 加载 P 矩阵 (假设已由 evaluate.py 保存)
+        # P 矩阵是逐层存储的，例如 "layer_05_P.pt"
+        P_matrices_layer_specific = {}
+        if weights_main_dir.exists():
+            for layer_idx_for_p in hparams.layers: # 假设hparams.layers是包含所有相关层索引的列表
+                p_path = weights_main_dir / f"layer_{layer_idx_for_p:02d}_P.pt"
+                if p_path.exists():
+                    P_matrices_layer_specific[layer_idx_for_p] = torch.load(p_path).cuda().double() 
+                    # 确保 P 在正确的设备上并使用double精度
+                else:
+                    print(f"Warning: Projection matrix P for layer {layer_idx_for_p} not found at {p_path}")
+                    # 可能需要一个默认的 P (例如单位矩阵) 或者抛出错误
+                    # 为了简单起见，如果找不到P，AlphaEdit的模拟计算会受影响
+        else:
+            print(f"Warning: Main weights directory {weights_main_dir} for P matrices not found.")
+
+
+
     # Insert
     for i, layer in enumerate(hparams.layers):
         print(f"\n\nLAYER {layer}\n")
+        weight_name = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
+
+        # 1. 保存当前层的 W_orig (在应用本层本 chunk 的 delta 之前)
+        # weights_copy[weight_name] 是这个 chunk 开始前，该层的原始权重
+        W_orig_layer = weights_copy[weight_name].detach().cpu() 
+        if current_chunk_weights_dir:
+            torch.save(W_orig_layer, current_chunk_weights_dir / f"layer_{layer:02d}_W_orig.pt")
+
 
         # Get current model activations
         layer_ks = compute_ks(model, tok, requests, hparams, layer, context_templates).T
@@ -193,6 +231,13 @@ def execute_memit(
             targets.double(),
         )
 
+        if current_chunk_weights_dir:
+            # K1 (d_in x u). layer_ks 在代码中是 (d_in x N_edits*N_templates)
+            torch.save(layer_ks.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_K1.pt")
+             # R_total_for_chunk (d_out x u)
+            torch.save(targets.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_R_chunk_targets.pt")
+
+
         adj_k = torch.linalg.solve(
             hparams.mom2_update_weight * cov.double() + layer_ks @ layer_ks.T,
             layer_ks,
@@ -201,11 +246,14 @@ def execute_memit(
         upd_matrix = resid @ adj_k.T
 
         # Adjust update matrix shape
-        weight_name = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
         upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)
 
         print("orig norm", torch.linalg.norm(weights[weight_name]))
         print("upd norm", torch.linalg.norm(upd_matrix))
+
+        if current_chunk_weights_dir:
+            torch.save(upd_matrix.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_delta_memit.pt")
+
 
         # Update model weights and record desired changes in `delta` variable
         with torch.no_grad():
@@ -214,6 +262,10 @@ def execute_memit(
                 adj_k.detach().cpu(),
                 resid.detach().cpu(),
             )
+        
+        W_memit_applied = weights_copy[weight_name].detach().cpu() 
+        if current_chunk_weights_dir:
+            torch.save(W_memit_applied, current_chunk_weights_dir / f"layer_{layer:02d}_W_memit_applied.pt")
 
         # Clear GPU memory
         cov.cpu()

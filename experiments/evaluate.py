@@ -206,11 +206,15 @@ def main(
             if alg_name == "AlphaEdit":
                 P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
         del W_out
+
+    save_weights_env = os.environ.get('SAVE')
+    
     if alg_name == "AlphaEdit":
         for i, layer in enumerate(hparams.layers):
             P[i,:,:] = get_project(model,tok,layer,hparams, run_dir)
-        torch.save(P, "null_space_project.pt")
-        torch.save(P, run_dir / "weights" / "all_layers_P.pt")
+        if save_weights_env is not None:
+            torch.save(P, "null_space_project.pt")
+            torch.save(P, run_dir / "weights" / "all_layers_P.pt")
     # hs = get_module_input_output_at_words(
     #         model,
     #         tok,
@@ -250,14 +254,14 @@ def main(
         seq_args = dict(cache_c=cache_c) if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "NSE"]) else dict()
         nc_args = dict(P = P) if any(alg in alg_name for alg in ["AlphaEdit"]) else dict()
 
-        # 新增 run_dir 和 chunk_idx (cnt) 到传递给 apply_algo 的参数中
+        
         algo_passthrough_args = {
             **args_conserve_memory,
             **etc_args,
             **seq_args,
             **nc_args,
-            "run_dir": run_dir,    # <--- 新增
-            "chunk_idx": cnt       # <--- 新增
+            "run_dir": run_dir,
+            "chunk_idx": cnt
         }
 
         if cnt == 0 and args.downstream_eval_steps > 0:#do initial GLUE EVAL WITH ORIGINAL MODEL
@@ -374,6 +378,8 @@ def main(
                 return_orig_weights=False,
                 **args_conserve_memory,
                 **etc_args,
+                run_dir=run_dir,
+                chunk_idx=cnt,
             )
         exec_time = time() - start
         cnt+=1
@@ -457,10 +463,13 @@ def get_project(model, tok, layer, hparams, run_dir):
         force_recompute=force_recompute,
     ).cpu()
 
+    save_weights_env = os.environ.get('SAVE')
+
     # 保存 K0K0T (cov)
-    cov_save_path = weights_dir / f"layer_{layer:02d}_K0K0T.pt"
-    torch.save(cov, cov_save_path)
-    print(f"Saved K0K0T for layer {layer} to {cov_save_path}")
+    if save_weights_env is not None:
+        cov_save_path = weights_dir / f"layer_{layer:02d}_K0K0T.pt"
+        torch.save(cov, cov_save_path)
+        print(f"Saved K0K0T for layer {layer} to {cov_save_path}")
 
     
 
@@ -471,9 +480,11 @@ def get_project(model, tok, layer, hparams, run_dir):
   
     P_layer = U[:, small_singular_indices] @ U[:, small_singular_indices].T
     # 保存 P
-    P_save_path = weights_dir / f"layer_{layer:02d}_P.pt"
-    torch.save(P_layer, P_save_path)
-    print(f"Saved P for layer {layer} to {P_save_path}")
+    
+    if save_weights_env is not None:
+        P_save_path = weights_dir / f"layer_{layer:02d}_P.pt"
+        torch.save(P_layer, P_save_path)
+        print(f"Saved P for layer {layer} to {P_save_path}")
 
     return P_layer
 

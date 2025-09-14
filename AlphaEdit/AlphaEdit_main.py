@@ -36,6 +36,8 @@ def apply_AlphaEdit_to_model(
     Invariant: model at beginning of function == model at end of function
     """
 
+    save_weights_env = os.environ.get('SAVE')
+
     # Update target and print info
     requests = deepcopy(requests)
     for i, request in enumerate(requests):
@@ -119,7 +121,7 @@ def apply_AlphaEdit_to_model(
 
         # 1. 保存当前层的 W_orig (在应用本层本 chunk 的 delta 之前)
         W_orig_layer = weights[weight_name].detach().cpu()
-        if current_chunk_weights_dir:
+        if current_chunk_weights_dir and save_weights_env is not None:
             torch.save(W_orig_layer, current_chunk_weights_dir / f"layer_{layer:02d}_W_orig.pt")
 
 
@@ -149,7 +151,7 @@ def apply_AlphaEdit_to_model(
         # Adjust update matrix shape
         upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)
 
-        if current_chunk_weights_dir:
+        if current_chunk_weights_dir and save_weights_env is not None:
             torch.save(layer_ks.T.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_K1.pt") # (u x d_model)
             torch.save(targets.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_R_chunk_targets.pt") # (d_model x u)
             torch.save(resid.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_R_partial_resid.pt") # (d_model x u)
@@ -186,7 +188,7 @@ def apply_AlphaEdit_to_model(
 
         delta_alphaedit_layer = upd_matrix_match_shape(delta_alphaedit_unshaped, weights[weight_name].shape)
 
-        if current_chunk_weights_dir:
+        if current_chunk_weights_dir and save_weights_env is not None:
             torch.save(delta_alphaedit_layer.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_delta_alphaedit.pt")
 
 
@@ -196,7 +198,7 @@ def apply_AlphaEdit_to_model(
         with torch.no_grad():
             weights[weight_name][...] = weights[weight_name] + upd_matrix
 
-        if current_chunk_weights_dir:
+        if current_chunk_weights_dir and save_weights_env is not None:
             torch.save(weights[weight_name].detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_W_alphaedit_applied.pt")
 
 

@@ -1,0 +1,1 @@
+python3 analysis.py --run_dir=/data/yichen/yyz/AlphaEdit/results/AlphaEdit/run_022
