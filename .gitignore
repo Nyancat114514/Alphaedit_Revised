@@ -1,4 +1,4 @@
-/data
+data/
 null_space_project.pt
-/results
+results/
 __pycache__/

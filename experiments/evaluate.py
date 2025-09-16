@@ -113,6 +113,10 @@ def main(
     hparams = params_class.from_json(params_path)
     if not (run_dir / "params.json").exists():
         shutil.copyfile(params_path, run_dir / "params.json")
+
+    with open(run_dir / "hparams.json", "w") as f:
+        json.dump(hparams.to_dict(), f, indent=1)
+
     print(f"Executing {alg_name} with parameters {hparams}")
 
     # Instantiate vanilla model
@@ -228,9 +232,13 @@ def main(
     # del hs
     glue_save_location = str(run_dir) + '/' + 'glue_eval/'
     os.makedirs(glue_save_location, exist_ok=True)
+
+    case_results_dir = run_dir / "case_results"
+    case_results_dir.mkdir(exist_ok=True)
+
     cnt = 0
     for record_chunks in chunks(ds, num_edits):
-        case_result_template = str(run_dir / "{}_edits-case_{}.json")
+        case_result_template = str(case_results_dir / "{}_edits-case_{}.json")
         print(f"=================================================================={cnt+1}_edit==================================================================")
         # Is the chunk already done?
         already_finished = True

@@ -1,0 +1,1 @@
+python compare_analysis.py --alphaedit_run_dir results/AlphaEdit/run_022 --memit_run_dir results/MEMIT/run_001

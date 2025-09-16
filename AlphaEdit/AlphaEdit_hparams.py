@@ -36,3 +36,6 @@ class AlphaEditHyperParams(HyperParams):
     mom2_dtype: str
     nullspace_threshold: float
     L2: float
+
+    def to_dict(self):
+        return self.__dict__

@@ -32,7 +32,7 @@ def apply_AlphaEdit_to_model(
     chunk_idx: Optional[int] = None
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
-    Executes the MEMIT update algorithm for the specified update at the specified layer
+    Executes the AlphaEdit update algorithm for the specified update at the specified layer
     Invariant: model at beginning of function == model at end of function
     """
 
@@ -46,7 +46,7 @@ def apply_AlphaEdit_to_model(
             requests[i]["target_new"]["str"] = " " + request["target_new"]["str"]
     for request in requests[:10]:
         print(
-            f"MEMIT request sample: "
+            f"AlphaEdit request sample: "
             f"[{request['prompt'].format(request['subject'])}] -> [{request['target_new']['str']}]"
         )
 
