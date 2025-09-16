@@ -4,6 +4,7 @@ import json
 import shutil
 from itertools import islice
 from time import time
+from datetime import datetime
 from typing import Tuple, Union
 import numpy as np
 import torch
@@ -73,6 +74,8 @@ def main(
     num_edits: int = 1,
     use_cache: bool = False,
 ):
+    start_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     # Set algorithm-specific variables
     params_class, apply_algo = ALG_DICT[alg_name]
 
@@ -97,6 +100,27 @@ def main(
         run_dir = RESULTS_DIR / dir_name / f"run_{str(run_id).zfill(3)}"
         run_dir.mkdir(parents=True, exist_ok=True)
     print(f"Results will be stored at {run_dir}")
+
+    run_args = {
+        "start_time": start_time_str,
+        "alg_name": alg_name,
+        "model_name_arg": model_name if isinstance(model_name, str) else "loaded_from_tuple",
+        "hparams_fname": hparams_fname,
+        "ds_name": ds_name,
+        "dataset_size_limit": dataset_size_limit,
+        "num_edits": num_edits,
+        "continue_from_run": continue_from_run,
+        "skip_generation_tests": skip_generation_tests,
+        "generation_test_interval": generation_test_interval,
+        "conserve_memory": conserve_memory,
+        "use_cache": use_cache,
+    }
+    # 将字典保存为 JSON 文件
+    with open(run_dir / "run_args.json", "w") as f:
+        json.dump(run_args, f, indent=4)
+    print(f"Run arguments and start time saved to {run_dir / 'run_args.json'}")
+
+
     if "MEMIT" in alg_name:
     # Get run hyperparameters
         params_path = (
@@ -113,10 +137,6 @@ def main(
     hparams = params_class.from_json(params_path)
     if not (run_dir / "params.json").exists():
         shutil.copyfile(params_path, run_dir / "params.json")
-
-    with open(run_dir / "hparams.json", "w") as f:
-        json.dump(hparams.to_dict(), f, indent=1)
-
     print(f"Executing {alg_name} with parameters {hparams}")
 
     # Instantiate vanilla model
