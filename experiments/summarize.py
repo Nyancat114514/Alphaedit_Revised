@@ -3,6 +3,7 @@ import json
 from pprint import pprint
 from typing import List, Optional
 import sys
+import os
 
 import numpy as np
 from scipy.stats import hmean
@@ -19,6 +20,7 @@ def summarize(
 ):  # runs = None -> all runs
     summaries = []
     uncompressed = []
+    last_summary = {}
 
     for run_dir in (RESULTS_DIR / dir_name if not abs_path else dir_name).iterdir():
     #for run_dir in [Path(abs_path)]:
@@ -27,8 +29,45 @@ def summarize(
         if runs is not None and all(run not in str(run_dir) for run in runs):
             continue
 
+        summary_file_path = run_dir / "summary_metrics.json"
+
+        if os.path.exists(summary_file_path):
+            print(f"\nFound cached summary in: {summary_file_path}")
+            print("Loading from file and skipping calculation...")
+            try:
+                with open(summary_file_path, "r") as f:
+                    cached_summary = json.load(f)
+                metadata = {
+                    "run_dir": cached_summary.get("run_dir", str(run_dir)),
+                    "num_cases": cached_summary.get("num_cases", "N/A"),
+                }
+                print(metadata)
+                
+                pprint(cached_summary)
+
+                final_summary = {}
+                for k, v in cached_summary.items():
+                    if isinstance(v, list):
+                        final_summary[k] = tuple(np.nan if x is None else x for x in v)
+                    else:
+                        final_summary[k] = v
+
+                summaries.append(final_summary)
+                last_summary = final_summary
+                continue
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Could not read or decode {summary_file_path}: {e}. Recalculating...")
+
         # Iterate through all case files
         cur_sum = collections.defaultdict(lambda: [])
+
+        case_results_dir = run_dir / "case_results"
+
+        if case_results_dir.is_dir():
+            search_dir = case_results_dir
+        else:
+            search_dir = run_dir
+
         files = list(run_dir.glob("*case_*.json"))
         files.sort(key=lambda x: int(str(x).split("_")[-1].split(".")[0]))
         file_wise_results = {}
@@ -163,8 +202,20 @@ def summarize(
         pprint(cur_sum)
         summaries.append(cur_sum)
 
+        serializable_summary = {}
+        for k, v in cur_sum.items():
+            if isinstance(v, tuple):
+                # 将包含numpy类型的元组转换为JSON兼容的列表（None代表NaN）
+                serializable_summary[k] = [None if np.isnan(val) else float(val) for val in v]
+            else:
+                serializable_summary[k] = v
+        
+        print(f"Saving new summary to: {summary_file_path}")
+        with open(summary_file_path, "w") as f:
+            json.dump(serializable_summary, f, indent=4)
+
     #return uncompressed if get_uncompressed else summaries
-    return cur_sum
+    return last_summary
 
 
 if __name__ == "__main__":
