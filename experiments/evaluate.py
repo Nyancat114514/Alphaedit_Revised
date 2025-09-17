@@ -74,6 +74,7 @@ def main(
     num_edits: int = 1,
     use_cache: bool = False,
 ):
+    start_time = datetime.now()
     start_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     # Set algorithm-specific variables
@@ -439,7 +440,9 @@ def main(
     #         fact_token_strategy=hparams.fact_token,
     #     )[1].T
     # torch.save(hs, "post_edit_hs_memit.pt")
-    start = time()
+
+    training_end_time = datetime.now()
+
     gen_test_vars = [snips, vec]
     for record in ds:
         out_file = Path(case_result_template.format(num_edits, record["case_id"]))
@@ -500,7 +503,13 @@ def main(
         #     for k, v in weights_copy.items():
         #         nethook.get_parameter(model, k)[...] = v.to("cuda")
 
-        print("Evaluation took", time() - start)
+    evaluation_end_time = datetime.now()
+
+    print(f"Training time cost: {training_end_time - start_time}")
+    print(f"Evaluation time cost: {evaluation_end_time - training_end_time}")
+    print(f"Total time cost: {evaluation_end_time - start_time}")
+
+
 def get_project(model, tok, layer, hparams, run_dir):
     weights_dir = Path(run_dir) / "weights" # 定义 weights 目录
     weights_dir.mkdir(parents=True, exist_ok=True) # 创建目录
