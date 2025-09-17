@@ -96,6 +96,8 @@ def compute_rewrite_quality_zsre(
     }
     ret["neighborhood_prompts_correct"] = neighborhood_correct
 
+    ret["rewrite_success"] = all(ret["rewrite_prompts_correct"])
+
     return ret
 
 

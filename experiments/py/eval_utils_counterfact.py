@@ -118,6 +118,8 @@ def compute_rewrite_quality_counterfact(
         )
         ret.update(gen_stats)
 
+    ret["rewrite_success"] = all(ret["rewrite_prompts_correct"])
+
     return ret
 
 

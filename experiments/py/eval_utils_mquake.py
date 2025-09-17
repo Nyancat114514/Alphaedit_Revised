@@ -80,6 +80,8 @@ def compute_rewrite_quality_mquake(
         )
     }
 
+    ret["rewrite_success"] = all(ret["rewrite_prompts_correct"])
+
     return ret
 
 

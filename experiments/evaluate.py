@@ -34,6 +34,7 @@ from AlphaEdit.AlphaEdit_main import apply_AlphaEdit_to_model, get_cov
 from rome import ROMEHyperParams, apply_rome_to_model
 from util import nethook
 from util.globals import *
+from util.generate import generate_fast
 from nse import NSEHyperParams
 from nse.nse_main import apply_nse_to_model
 from glue_eval.glue_eval import GLUEEval
