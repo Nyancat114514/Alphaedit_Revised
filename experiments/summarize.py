@@ -68,7 +68,7 @@ def summarize(
         else:
             search_dir = run_dir
 
-        files = list(run_dir.glob("*case_*.json"))
+        files = list(search_dir.glob("*case_*.json"))
         files.sort(key=lambda x: int(str(x).split("_")[-1].split(".")[0]))
         file_wise_results = {}
         for case_file in files:

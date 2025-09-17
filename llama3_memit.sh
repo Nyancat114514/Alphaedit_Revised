@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=5 python3 -m experiments.evaluate     --alg_name=MEMIT     --model_name=/data/yichen/yyz/model/llama3-8b-instruct     --hparams_fname=Llama3-8B.json --ds_name=mcf --dataset_size_limit=2000    --num_edits=100 --downstream_eval_steps=5
+CUDA_VISIBLE_DEVICES=7 python3 -m experiments.evaluate     --alg_name=MEMIT     --model_name=/data/yichen/yyz/model/llama3-8b-instruct     --hparams_fname=Llama3-8B.json --ds_name=mcf --dataset_size_limit=2000    --num_edits=200 --downstream_eval_steps=5

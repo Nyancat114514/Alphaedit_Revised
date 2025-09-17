@@ -141,6 +141,122 @@ def compare_chunk_layer(alphaedit_chunk_dir: Path, memit_chunk_dir: Path, layer_
     else:
         print("K1 or R_chunk_targets not found, skipping updated knowledge impact calculation.")
 
+    # +++ 5. Row and Column Vector Analysis +++
+    print("\n--- 5. Row and Column Vector Analysis ---")
+    
+    # Row norms
+    row_norms_alpha = torch.linalg.norm(delta_alpha, ord=2, dim=1).cpu().numpy()
+    row_norms_memit = torch.linalg.norm(delta_memit, ord=2, dim=1).cpu().numpy()
+    
+    plt.figure(figsize=(12, 6))
+    plt.subplot(1, 2, 1)
+    plt.hist(row_norms_alpha, bins=50, alpha=0.7, label='AlphaEdit', log=True)
+    plt.hist(row_norms_memit, bins=50, alpha=0.7, label='MEMIT', log=True)
+    plt.title(f'Row Norm Distribution (L{layer_id}, C{alphaedit_chunk_dir.name})')
+    plt.xlabel('L2 Norm')
+    plt.ylabel('Frequency (log scale)')
+    plt.legend()
+
+    # Column norms
+    col_norms_alpha = torch.linalg.norm(delta_alpha, ord=2, dim=0).cpu().numpy()
+    col_norms_memit = torch.linalg.norm(delta_memit, ord=2, dim=0).cpu().numpy()
+
+    plt.subplot(1, 2, 2)
+    plt.hist(col_norms_alpha, bins=50, alpha=0.7, label='AlphaEdit', log=True)
+    plt.hist(col_norms_memit, bins=50, alpha=0.7, label='MEMIT', log=True)
+    plt.title(f'Column Norm Distribution (L{layer_id}, C{alphaedit_chunk_dir.name})')
+    plt.xlabel('L2 Norm')
+    plt.ylabel('Frequency (log scale)')
+    plt.legend()
+    
+    fig_save_path_norms = fig_save_dir / f"layer_{layer_id:02d}_vector_norm_dist.png"
+    plt.tight_layout()
+    plt.savefig(fig_save_path_norms)
+    print(f"Saved vector norm distribution plot to {fig_save_path_norms}")
+    plt.close()
+
+
+    # +++ 6. SVD Analysis +++
+    print("\n--- 6. SVD Analysis ---")
+    
+    # Perform SVD
+    print("Performing SVD on delta matrices...")
+    U_alpha, S_alpha, Vh_alpha = torch.linalg.svd(delta_alpha.float(), full_matrices=False)
+    U_memit, S_memit, Vh_memit = torch.linalg.svd(delta_memit.float(), full_matrices=False)
+    U_D, S_D, Vh_D = torch.linalg.svd(D.float(), full_matrices=False)
+    print("SVD complete.")
+
+    # Plot singular values
+    plt.figure(figsize=(10, 6))
+    k = min(100, len(S_alpha), len(S_memit), len(S_D)) # Plot top k singular values
+    plt.plot(S_alpha.cpu().numpy()[:k], 'o-', label='AlphaEdit Singular Values')
+    plt.plot(S_memit.cpu().numpy()[:k], 'x--', label='MEMIT Singular Values')
+    plt.plot(S_D.cpu().numpy()[:k], 's:', label='Difference (D) Singular Values')
+    plt.title(f'Top {k} Singular Values (Layer {layer_id}, Chunk {alphaedit_chunk_dir.name})')
+    plt.xlabel('Singular Value Index')
+    plt.ylabel('Magnitude')
+    plt.yscale('log')
+    plt.legend()
+    plt.grid(True)
+    
+    fig_save_path_svd = fig_save_dir / f"layer_{layer_id:02d}_singular_values.png"
+    plt.savefig(fig_save_path_svd)
+    print(f"Saved singular values plot to {fig_save_path_svd}")
+    plt.close()
+
+    # Visualize first singular vectors
+    num_vectors_to_show = 2
+    fig, axes = plt.subplots(2, num_vectors_to_show, figsize=(6 * num_vectors_to_show, 10))
+    for i in range(num_vectors_to_show):
+        # Left singular vectors (U)
+        ax = axes[0, i]
+        u_alpha_i = U_alpha[:, i].cpu().numpy()
+        u_memit_i = U_memit[:, i].cpu().numpy()
+        sns.heatmap(np.vstack([u_alpha_i, u_memit_i]), ax=ax, cmap='coolwarm', cbar=i==num_vectors_to_show-1)
+        ax.set_title(f'Left Singular Vector (U) #{i+1}')
+        ax.set_yticks([0.5, 1.5], ['AlphaEdit', 'MEMIT'])
+        
+        # Right singular vectors (Vh.T)
+        ax = axes[1, i]
+        v_alpha_i = Vh_alpha.T[:, i].cpu().numpy()
+        v_memit_i = Vh_memit.T[:, i].cpu().numpy()
+        sns.heatmap(np.vstack([v_alpha_i, v_memit_i]), ax=ax, cmap='coolwarm', cbar=i==num_vectors_to_show-1)
+        ax.set_title(f'Right Singular Vector (V) #{i+1}')
+        ax.set_yticks([0.5, 1.5], ['AlphaEdit', 'MEMIT'])
+        
+    plt.suptitle(f'Comparison of First {num_vectors_to_show} Singular Vectors (Layer {layer_id})')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    fig_save_path_svd_vectors = fig_save_dir / f"layer_{layer_id:02d}_singular_vectors.png"
+    plt.savefig(fig_save_path_svd_vectors)
+    print(f"Saved singular vectors visualization to {fig_save_path_svd_vectors}")
+    plt.close()
+
+    # --- SVD on Original Weight Matrix (W) ---
+    # To analyze the original weight matrix W, you first need to save it during the training/editing process.
+    # For example, in your AlphaEdit/MEMIT script, before applying the delta, save the original weight:
+    # `torch.save(model.layers[layer_id].weight.data, run_dir / "weights" / f"layer_{layer_id:02d}_original_weight.pt")`
+    #
+    # Then, you can load it here for analysis:
+    #
+    # print("\n--- SVD Analysis on Original Weight Matrix (W) ---")
+    # original_weight_path = global_weights_dir.parent / "weights" / f"layer_{layer_id:02d}_original_weight.pt"
+    # W = load_matrix(original_weight_path)
+    # if W is not None:
+    #     U_w, S_w, Vh_w = torch.linalg.svd(W.float(), full_matrices=False)
+    #     plt.figure(figsize=(10,6))
+    #     plt.plot(S_w.cpu().numpy(), label='Original W Singular Values')
+    #     plt.title(f'Singular Values of W (Layer {layer_id})')
+    #     plt.xlabel('Singular Value Index')
+    #     plt.ylabel('Magnitude')
+    #     plt.yscale('log')
+    #     plt.legend()
+    #     fig_save_path_w_svd = fig_save_dir / f"layer_{layer_id:02d}_W_singular_values.png"
+    #     plt.savefig(fig_save_path_w_svd)
+    #     plt.close()
+    #     print(f"Saved W singular values plot to {fig_save_path_w_svd}")
+    # else:
+    #     print("Original weight matrix not found. Skipping SVD analysis for W.")
+
     return norm_fro_alpha, norm_fro_memit
 
 

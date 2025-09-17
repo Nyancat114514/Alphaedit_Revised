@@ -467,6 +467,34 @@ def main(
         with open(out_file, "w") as f:
             json.dump(metrics, f, indent=1)
 
+        if metrics.get("post", {}).get("rewrite_success"):
+            print("\n--- Successful Rewrite ---")
+            print(f"Case ID: {record['case_id']}")
+            
+            rewrites = record["requested_rewrite"]
+            if not isinstance(rewrites, list):
+                rewrites = [rewrites]
+            
+            for rewrite in rewrites:
+                prompt = rewrite["prompt"].format(rewrite["subject"])
+                target_new = rewrite["target_new"]["str"]
+                target_true = rewrite["target_true"]["str"]
+                
+                print(f"\nInput: {prompt}")
+                print(f"Target (New): {target_new}")
+                print(f"Target (True): {target_true}")
+                
+                model_output = generate_fast(
+                    edited_model, 
+                    tok, 
+                    [prompt], 
+                    n_gen_per_prompt=1, 
+                    max_out_len=300
+                )[0]
+                print(f"Model Output: {model_output}")
+            print("------------------------\n")
+
+
         # Restore original weights
         # with torch.no_grad():
         #     for k, v in weights_copy.items():
