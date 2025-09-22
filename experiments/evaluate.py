@@ -5,7 +5,7 @@ import shutil
 from itertools import islice
 from time import time
 from datetime import datetime
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -67,13 +67,15 @@ def main(
     hparams_fname: str,
     ds_name: str,
     dataset_size_limit: int,
-    continue_from_run: str,
+    continue_from_run: Optional[str],
     skip_generation_tests: bool,
     generation_test_interval: int,
     conserve_memory: bool,
     dir_name: str,
     num_edits: int = 1,
     use_cache: bool = False,
+    save_weights: bool = False,
+    print_outputs: bool = False,
 ):
     start_time = datetime.now()
     start_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -99,7 +101,7 @@ def main(
             run_id = 0 if not id_list else max(id_list) + 1
         else:
             run_id = 0
-        run_dir = RESULTS_DIR / dir_name / f"run_{str(run_id).zfill(3)}"
+        run_dir = RESULTS_DIR / dir_name / f"run_{str(run_id).zfill(3)}" # RESULTS_DIR is in global.yaml
         run_dir.mkdir(parents=True, exist_ok=True)
     print(f"Results will be stored at {run_dir}")
 
@@ -117,6 +119,8 @@ def main(
         "conserve_memory": conserve_memory,
         "use_cache": use_cache,
     }
+    # Ensure run_dir is a Path object
+    run_dir = Path(run_dir)
     # 将字典保存为 JSON 文件
     with open(run_dir / "run_args.json", "w") as f:
         json.dump(run_args, f, indent=4)
@@ -153,8 +157,8 @@ def main(
 
     # Load data
     print("Loading dataset, attribute snippets, tf-idf data")
-    snips = AttributeSnippets(DATA_DIR) if not skip_generation_tests else None
-    vec = get_tfidf_vectorizer(DATA_DIR) if not skip_generation_tests else None
+    snips = AttributeSnippets(str(DATA_DIR)) if not skip_generation_tests else None
+    vec = get_tfidf_vectorizer(str(DATA_DIR)) if not skip_generation_tests else None
 
     if num_edits > 1:
         assert ds_name != "cf", f"{ds_name} does not support multiple edits"
@@ -233,12 +237,11 @@ def main(
                 P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
         del W_out
 
-    save_weights_env = os.environ.get('SAVE')
     
     if alg_name == "AlphaEdit":
         for i, layer in enumerate(hparams.layers):
-            P[i,:,:] = get_project(model,tok,layer,hparams, run_dir)
-        if save_weights_env is not None:
+            P[i,:,:] = get_project(model,tok,layer,hparams, run_dir, save_weights)
+        if save_weights:
             torch.save(P, "null_space_project.pt")
             torch.save(P, run_dir / "weights" / "all_layers_P.pt")
     # hs = get_module_input_output_at_words(
@@ -291,7 +294,9 @@ def main(
             **seq_args,
             **nc_args,
             "run_dir": run_dir,
-            "chunk_idx": cnt
+            "chunk_idx": cnt,
+            "save_weights": save_weights,
+            "print_outputs": print_outputs,
         }
 
         if cnt == 0 and args.downstream_eval_steps > 0:#do initial GLUE EVAL WITH ORIGINAL MODEL
@@ -444,6 +449,12 @@ def main(
 
     training_end_time = datetime.now()
 
+    if save_weights:
+        output_dir = run_dir / "edited_model"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(output_dir)
+        tok.save_pretrained(output_dir)
+
     gen_test_vars = [snips, vec]
     for record in ds:
         out_file = Path(case_result_template.format(num_edits, record["case_id"]))
@@ -470,11 +481,14 @@ def main(
         # Dump metrics in .json
         with open(out_file, "w") as f:
             json.dump(metrics, f, indent=1)
-
-        if metrics.get("post", {}).get("rewrite_success"):
-            print("\n--- Successful Rewrite ---")
-            print(f"Case ID: {record['case_id']}")
+        
+        if print_outputs:
+            if metrics.get("post", {}).get("rewrite_success"):
+                print("\n--- Successful Rewrite ---")
+            else:
+                print("\n--- Unsuccessful Rewrite ---")
             
+            print(f"Case ID: {record['case_id']}")
             rewrites = record["requested_rewrite"]
             if not isinstance(rewrites, list):
                 rewrites = [rewrites]
@@ -511,10 +525,8 @@ def main(
     print(f"Total time cost: {evaluation_end_time - start_time}")
 
 
-def get_project(model, tok, layer, hparams, run_dir):
-    weights_dir = Path(run_dir) / "weights" # 定义 weights 目录
-    weights_dir.mkdir(parents=True, exist_ok=True) # 创建目录
-
+def get_project(model, tok, layer, hparams, run_dir, save_weights):
+    
 
     force_recompute = False
     cov = get_cov(
@@ -529,10 +541,11 @@ def get_project(model, tok, layer, hparams, run_dir):
         force_recompute=force_recompute,
     ).cpu()
 
-    save_weights_env = os.environ.get('SAVE')
-
     # 保存 K0K0T (cov)
-    if save_weights_env is not None:
+
+    if save_weights:
+        weights_dir = Path(run_dir) / "weights"
+        weights_dir.mkdir(parents=True, exist_ok=True)
         cov_save_path = weights_dir / f"layer_{layer:02d}_K0K0T.pt"
         torch.save(cov, cov_save_path)
         print(f"Saved K0K0T for layer {layer} to {cov_save_path}")
@@ -547,7 +560,7 @@ def get_project(model, tok, layer, hparams, run_dir):
     P_layer = U[:, small_singular_indices] @ U[:, small_singular_indices].T
     # 保存 P
     
-    if save_weights_env is not None:
+    if save_weights:
         P_save_path = weights_dir / f"layer_{layer:02d}_P.pt"
         torch.save(P_layer, P_save_path)
         print(f"Saved P for layer {layer} to {P_save_path}")
@@ -654,6 +667,17 @@ if __name__ == "__main__":
         default=0,
         help="If we want to do sequential editing or not",
     )
+    parser.add_argument(
+        "--save_weights",
+        action="store_true", 
+        help="Set this flag to save intermediate model weights."
+    )
+    parser.add_argument(
+        "--print_outputs",
+        action="store_true",
+        help="Set this flag to print model outputs during evaluation."
+    )
+
     parser.set_defaults(skip_generation_tests=False, conserve_memory=False)
     args = parser.parse_args()
 
@@ -670,4 +694,6 @@ if __name__ == "__main__":
         dir_name=args.alg_name,
         num_edits=args.num_edits,
         use_cache=args.use_cache,
+        save_weights=args.save_weights,
+        print_outputs=args.print_outputs,
     )

@@ -29,14 +29,14 @@ def apply_AlphaEdit_to_model(
     cache_c = None,
     P = None,
     run_dir: Optional[Path] = None,
-    chunk_idx: Optional[int] = None
+    chunk_idx: Optional[int] = None,
+    save_weights: bool = False,
+    print_outputs: bool = False,
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the AlphaEdit update algorithm for the specified update at the specified layer
     Invariant: model at beginning of function == model at end of function
     """
-
-    save_weights_env = os.environ.get('SAVE')
 
     # Update target and print info
     requests = deepcopy(requests)
@@ -111,7 +111,7 @@ def apply_AlphaEdit_to_model(
 
 
     current_chunk_weights_dir = None
-    if run_dir is not None and chunk_idx is not None:
+    if save_weights and run_dir is not None and chunk_idx is not None:
         current_chunk_weights_dir = Path(run_dir) / "weights" / f"chunk_{chunk_idx:03d}"
         current_chunk_weights_dir.mkdir(parents=True, exist_ok=True)
 
@@ -121,7 +121,7 @@ def apply_AlphaEdit_to_model(
 
         # 1. 保存当前层的 W_orig (在应用本层本 chunk 的 delta 之前)
         W_orig_layer = weights[weight_name].detach().cpu()
-        if current_chunk_weights_dir and save_weights_env is not None:
+        if save_weights and current_chunk_weights_dir:
             torch.save(W_orig_layer, current_chunk_weights_dir / f"layer_{layer:02d}_W_orig.pt")
 
 
@@ -151,7 +151,7 @@ def apply_AlphaEdit_to_model(
         # Adjust update matrix shape
         upd_matrix = upd_matrix_match_shape(upd_matrix, weights[weight_name].shape)
 
-        if current_chunk_weights_dir and save_weights_env is not None:
+        if save_weights and current_chunk_weights_dir:
             torch.save(layer_ks.T.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_K1.pt") # (u x d_model)
             torch.save(targets.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_R_chunk_targets.pt") # (d_model x u)
             torch.save(resid.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_R_partial_resid.pt") # (d_model x u)
@@ -188,7 +188,7 @@ def apply_AlphaEdit_to_model(
 
         delta_alphaedit_layer = upd_matrix_match_shape(delta_alphaedit_unshaped, weights[weight_name].shape)
 
-        if current_chunk_weights_dir and save_weights_env is not None:
+        if save_weights and current_chunk_weights_dir:
             torch.save(delta_alphaedit_layer.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_delta_alphaedit.pt")
 
 
@@ -198,7 +198,7 @@ def apply_AlphaEdit_to_model(
         with torch.no_grad():
             weights[weight_name][...] = weights[weight_name] + upd_matrix
 
-        if current_chunk_weights_dir and save_weights_env is not None:
+        if save_weights and current_chunk_weights_dir:
             torch.save(weights[weight_name].detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_W_alphaedit_applied.pt")
 
 

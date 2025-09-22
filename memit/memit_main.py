@@ -31,7 +31,9 @@ def apply_memit_to_model(
     return_orig_weights=False,
     cache_template: Optional[str] = None,
     run_dir: Optional[Path] = None,
-    chunk_idx: Optional[int] = None 
+    chunk_idx: Optional[int] = None,
+    save_weights: bool = False,
+    print_outputs: bool = False,
 ) -> Tuple[AutoModelForCausalLM, Dict[str, Any]]:
     """
     Returns a model with the desired changes.
@@ -44,7 +46,8 @@ def apply_memit_to_model(
     if copy:
         model = deepcopy(model)
 
-    deltas = execute_memit(model, tok, requests, hparams, cache_template=cache_template, run_dir=run_dir, chunk_idx=chunk_idx)
+    deltas = execute_memit(model, tok, requests, hparams, cache_template=cache_template, run_dir=run_dir, chunk_idx=chunk_idx,
+                           save_weights=save_weights, print_outputs=print_outputs)
 
     with torch.no_grad():
         for w_name, (key_mat, val_mat) in deltas.items():
@@ -70,7 +73,9 @@ def execute_memit(
     hparams: MEMITHyperParams,
     cache_template: Optional[str] = None,
     run_dir: Optional[Path] = None,
-    chunk_idx: Optional[int] = None 
+    chunk_idx: Optional[int] = None,
+    save_weights: bool = False,
+    print_outputs: bool = False,
 ) -> Dict[str, Tuple[torch.Tensor]]:
     """
     Executes the MEMIT update algorithm for the specified update at the specified layer
@@ -155,7 +160,7 @@ def execute_memit(
 
     # 为当前 chunk 创建存储目录
     current_chunk_weights_dir = None
-    if run_dir is not None and chunk_idx is not None:
+    if save_weights and run_dir is not None and chunk_idx is not None:
         weights_main_dir = Path(run_dir) / "weights" # 主 "weights" 目录
         current_chunk_weights_dir = weights_main_dir / f"chunk_{chunk_idx:03d}"
         current_chunk_weights_dir.mkdir(parents=True, exist_ok=True)
@@ -186,7 +191,7 @@ def execute_memit(
         # 1. 保存当前层的 W_orig (在应用本层本 chunk 的 delta 之前)
         # weights_copy[weight_name] 是这个 chunk 开始前，该层的原始权重
         W_orig_layer = weights_copy[weight_name].detach().cpu() 
-        if current_chunk_weights_dir:
+        if save_weights and current_chunk_weights_dir:
             torch.save(W_orig_layer, current_chunk_weights_dir / f"layer_{layer:02d}_W_orig.pt")
 
 
@@ -231,7 +236,7 @@ def execute_memit(
             targets.double(),
         )
 
-        if current_chunk_weights_dir:
+        if save_weights and current_chunk_weights_dir:
             # K1 (d_in x u). layer_ks 在代码中是 (d_in x N_edits*N_templates)
             torch.save(layer_ks.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_K1.pt")
              # R_total_for_chunk (d_out x u)
@@ -251,7 +256,7 @@ def execute_memit(
         print("orig norm", torch.linalg.norm(weights[weight_name]))
         print("upd norm", torch.linalg.norm(upd_matrix))
 
-        if current_chunk_weights_dir:
+        if save_weights and current_chunk_weights_dir:
             torch.save(upd_matrix.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_delta_memit.pt")
 
 
@@ -264,7 +269,7 @@ def execute_memit(
             )
         
         W_memit_applied = weights_copy[weight_name].detach().cpu() 
-        if current_chunk_weights_dir:
+        if save_weights and current_chunk_weights_dir:
             torch.save(W_memit_applied, current_chunk_weights_dir / f"layer_{layer:02d}_W_memit_applied.pt")
 
         # Clear GPU memory
