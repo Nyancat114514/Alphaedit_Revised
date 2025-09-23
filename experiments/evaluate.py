@@ -1,5 +1,6 @@
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ['HF_HOME'] = '/data/yichen/yyz/.cache' 
 import json
 import shutil
 from itertools import islice
@@ -543,6 +544,7 @@ def get_project(model, tok, layer, hparams, run_dir, save_weights):
 
     # 保存 K0K0T (cov)
 
+    weights_dir = None
     if save_weights:
         weights_dir = Path(run_dir) / "weights"
         weights_dir.mkdir(parents=True, exist_ok=True)
@@ -560,7 +562,7 @@ def get_project(model, tok, layer, hparams, run_dir, save_weights):
     P_layer = U[:, small_singular_indices] @ U[:, small_singular_indices].T
     # 保存 P
     
-    if save_weights:
+    if save_weights and weights_dir is not None:
         P_save_path = weights_dir / f"layer_{layer:02d}_P.pt"
         torch.save(P_layer, P_save_path)
         print(f"Saved P for layer {layer} to {P_save_path}")

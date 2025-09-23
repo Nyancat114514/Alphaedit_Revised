@@ -204,7 +204,7 @@ def get_module_input_output_at_words(
     words: List[str],
     module_template: str,
     fact_token_strategy: str,
-) -> Tuple[torch.Tensor]:
+) -> Tuple[torch.Tensor,torch.Tensor]:
     """
     Retrieves detached representations for a word at the input and
     output of a particular layer module.

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, get_dataset_config_names
 from tqdm.auto import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -98,9 +98,27 @@ def layer_stats(
         # from datasets import Dataset
         # raw_ds = Dataset.from_file('data/wikipedia-train.arrow')
         # raw_ds = {'train': raw_ds}
+        configs = get_dataset_config_names(ds_name)
+        print(f"Available configs for {ds_name}:")
+        en_configs = [c for c in configs if c.endswith(".en")]
+        print(en_configs)
+        
+        if not en_configs:
+            raise RuntimeError(f"No English config found for dataset {ds_name}")
+
+        config_to_use = en_configs[0] 
+        print(f"Using config: {config_to_use}")
+        
+        config_map = {
+            "wikitext": "wikitext-103-raw-v1",
+            "wikimedia/wikipedia": "20231101.en"  # 使用 'wikimedia/wikipedia' 作为键，并更新值为可用的配置
+        }
+        
         raw_ds = load_dataset(
             ds_name,
-            dict(wikitext="wikitext-103-raw-v1", wikipedia="20200501.en")[ds_name]
+            config_to_use,
+            # cache_dir="./.cache/huggingface/datasets",
+            # beam_runner="DirectRunner"
         )
         if hasattr(model.config, 'n_positions'):
             maxlen = model.config.n_positions
