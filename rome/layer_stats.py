@@ -130,6 +130,9 @@ def layer_stats(
             maxlen = model.config.seq_length
         else:
             raise NotImplementedError
+        
+        if hasattr(model.config, 'model_type') and 'llama' in model.config.model_type.lower():
+            maxlen = min(maxlen, 4096)
                 
         if hasattr(model.config, 'model_type') and 'mistral' in model.config.model_type:
             if hasattr(model.config, 'sliding_window') and model.config.sliding_window:
@@ -155,6 +158,9 @@ def layer_stats(
         npos = model.config.seq_length
     else:
         raise NotImplementedError
+    
+    if hasattr(model.config, 'model_type') and 'llama' in model.config.model_type.lower():
+        npos = min(npos, 4096)
         
     if hasattr(model.config, 'model_type') and 'mistral' in model.config.model_type:
         if hasattr(model.config, 'sliding_window') and model.config.sliding_window:
