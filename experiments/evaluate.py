@@ -524,6 +524,7 @@ def main(
     print(f"Training time cost: {training_end_time - start_time}")
     print(f"Evaluation time cost: {evaluation_end_time - training_end_time}")
     print(f"Total time cost: {evaluation_end_time - start_time}")
+    print(f"Results have been stored at {run_dir}")
 
 
 def get_project(model, tok, layer, hparams, run_dir, save_weights):
