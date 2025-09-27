@@ -542,27 +542,35 @@ def get_project(model, tok, layer, hparams, run_dir, save_weights):
         force_recompute=force_recompute,
     ).cpu()
 
-    # 保存 K0K0T (cov)
 
-    weights_dir = None
-    if save_weights:
-        weights_dir = Path(run_dir) / "weights"
-        weights_dir.mkdir(parents=True, exist_ok=True)
-        cov_save_path = weights_dir / f"layer_{layer:02d}_K0K0T.pt"
-        torch.save(cov, cov_save_path)
-        print(f"Saved K0K0T for layer {layer} to {cov_save_path}")
 
-    
 
     U, S, _ = torch.linalg.svd(cov, full_matrices=False)
     threshold = hparams.nullspace_threshold
     small_singular_indices = (S < threshold).nonzero(as_tuple=True)[0]
     print(f"Layer {layer}: Found {len(small_singular_indices)} singular values below threshold {threshold}")
   
-    P_layer = U[:, small_singular_indices] @ U[:, small_singular_indices].T
+    # P_layer = U[:, small_singular_indices] @ U[:, small_singular_indices].T
     # 保存 P
     
-    if save_weights and weights_dir is not None:
+    W_out = nethook.get_parameter(model, f"{hparams.rewrite_module_tmp.format(layer)}.weight")
+    if hparams.model_name == "gpt2-xl":
+        d = W_out.shape[0]
+    elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:
+        d = W_out.shape[1]
+    
+    rank = small_singular_indices
+    
+    random_matrix = torch.randn(d, d)
+    q, _ = torch.linalg.qr(random_matrix)
+    
+    random_basis = q[:, :rank]
+    P_layer = random_basis @ random_basis.T
+    
+    print(f"Layer {layer}: Using a random projection matrix of rank {rank}")
+    
+    if save_weights:
+        weights_dir = Path(run_dir) / "weights"
         P_save_path = weights_dir / f"layer_{layer:02d}_P.pt"
         torch.save(P_layer, P_save_path)
         print(f"Saved P for layer {layer} to {P_save_path}")
