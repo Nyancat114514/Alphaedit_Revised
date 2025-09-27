@@ -78,8 +78,8 @@ def layer_stats(
     tokenizer,
     layer_name,
     stats_dir,
-    ds_name,
-    to_collect,
+    ds_name: str = "wikipedia",
+    to_collect=None,
     model_name=None,
     sample_size=None,
     precision=None,
@@ -98,6 +98,11 @@ def layer_stats(
         # from datasets import Dataset
         # raw_ds = Dataset.from_file('data/wikipedia-train.arrow')
         # raw_ds = {'train': raw_ds}
+        nonlocal ds_name
+        if ds_name == "wikipedia":
+            print("Redirecting 'wikipedia' to 'wikimedia/wikipedia' for datasets library.")
+            ds_name = "wikimedia/wikipedia"
+        
         configs = get_dataset_config_names(ds_name)
         print(f"Available configs for {ds_name}:")
         en_configs = [c for c in configs if c.endswith(".en")]
@@ -113,6 +118,8 @@ def layer_stats(
             "wikitext": "wikitext-103-raw-v1",
             "wikimedia/wikipedia": "20231101.en"  # 使用 'wikimedia/wikipedia' 作为键，并更新值为可用的配置
         }
+        
+        
         
         raw_ds = load_dataset(
             ds_name,

@@ -18,6 +18,6 @@
     "ln_f_module": "model.norm",
     "lm_head_module": "lm_head",
     "mom2_dataset": "wikipedia",
-    "mom2_n_samples": 100000,
+    "mom2_n_samples": 5000,
     "mom2_dtype": "float32"
 }
