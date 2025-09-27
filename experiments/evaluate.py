@@ -524,6 +524,7 @@ def main(
     print(f"Training time cost: {training_end_time - start_time}")
     print(f"Evaluation time cost: {evaluation_end_time - training_end_time}")
     print(f"Total time cost: {evaluation_end_time - start_time}")
+    print(f"Results have been stored at {run_dir}")
 
 
 def get_project(model, tok, layer, hparams, run_dir, save_weights):
@@ -559,7 +560,7 @@ def get_project(model, tok, layer, hparams, run_dir, save_weights):
     elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:
         d = W_out.shape[1]
     
-    rank = small_singular_indices
+    rank = len(small_singular_indices)
     
     random_matrix = torch.randn(d, d)
     q, _ = torch.linalg.qr(random_matrix)
