@@ -1,1 +1,1 @@
-python3 -m  experiments.summarize --dir_name=MEMIT --runs=run_006
+python3 -m  experiments.summarize --dir_name=AlphaEdit --runs=run_068

@@ -2,6 +2,8 @@ data/
 null_space_project.pt
 results/
 __pycache__/
+*.json
+*.sh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
