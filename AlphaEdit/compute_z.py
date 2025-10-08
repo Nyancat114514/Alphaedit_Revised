@@ -16,7 +16,7 @@ def compute_z(
     request: Dict,
     hparams: AlphaEditHyperParams,
     layer: int,
-    context_templates: List[str],
+    context_templates: List[List[str]],
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Computes the value (right) vector for the rank-1 update.
@@ -60,6 +60,7 @@ def compute_z(
     rewriting_targets = torch.tensor(-100, device="cuda").repeat(
         len(rewriting_prompts), *input_tok["input_ids"].shape[1:]
     )
+    # the shape of rewriting_targets is (len(rewriting_prompts), seq_len), all values are -100
     for i in range(len(rewriting_prompts)):
         ex_len = input_tok["attention_mask"][i].sum()
         rewriting_targets[i, ex_len - len(target_ids) : ex_len] = target_ids
@@ -71,6 +72,10 @@ def compute_z(
         )
         for i, prompt in enumerate(all_prompts)
     ]
+    # get the indices of the tokens where the fact is looked up
+    # e.g. the prompt is "The capital of {} is", the subject is "France"
+    # after tokenization, the token ids are [The, capital, of, France, is]
+    # the index of "France" is 3, so lookup_idxs will be [3]
 
     # Finalize rewrite and loss layers
     loss_layer = max(hparams.v_loss_layer, layer)
@@ -97,9 +102,10 @@ def compute_z(
             if target_init is None:
                 print("Recording initial value of v*")
                 # Initial value is recorded for the clean sentence
+                # target_init is the representation at the lookup index of the first prompt
                 target_init = cur_out[0][0, lookup_idxs[0]].detach().clone()
 
-            # Add intervened delta
+            # Add intervened delta to every prompt at the fact lookup index
             for i, idx in enumerate(lookup_idxs):
 
                 if len(lookup_idxs)!=len(cur_out[0]):
@@ -131,6 +137,9 @@ def compute_z(
             logits = model(**input_tok).logits
 
             # Compute distribution for KL divergence
+            # the TraceDict class only modify the output of the specific layer, taking model().logits will still run through the whole model 
+            # the shape of logits is (num_prompts, seq_len, vocab_size)
+            # the shape of kl_logits is (len(kl_prompts), vocab_size) 
             kl_logits = torch.stack(
                 [
                     logits[i - len(kl_prompts), idx, :]
@@ -148,6 +157,14 @@ def compute_z(
             output=torch.transpose(output, 0, 1)
         full_repr = output[:len(rewriting_prompts)]
 
+        # Manually compute the negative log-likelihood for each token.
+        # This is equivalent to the cross-entropy loss but gives per-token scores.
+
+        # Select the log probability of the correct target token for each position.
+        # The index tensor for gather is carefully prepared:
+        # 1. `torch.where` replaces the ignore_index (-100) with a valid placeholder (0).
+        #    The gathered values at these positions are irrelevant as they will be masked out.
+        # 2. `.unsqueeze(2)` adds a dimension to match the rank of 'log_probs' [B, S, V], resulting in [B, S, 1].
         log_probs = torch.log_softmax(ln_f(full_repr) @ lm_w.to(full_repr.device) + lm_b.to(full_repr.device), dim=2)
         loss = torch.gather(
             log_probs,
@@ -178,7 +195,7 @@ def compute_z(
         if it == hparams.v_num_grad_steps - 1:
             break
 
-        # Backpropagate
+        # Backpropagate to calculate the gradient of delta
         loss.backward()
         opt.step()
 

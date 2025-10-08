@@ -38,6 +38,18 @@ def apply_AlphaEdit_to_model(
     Invariant: model at beginning of function == model at end of function
     """
 
+    # an example of requests:
+    # [
+    #   {   "case_id": "1",
+    #       "prompt": "The official religion of {} is",
+    #       "subject": "Edwin of Northumbria",
+    #       "relation_id": "P140",
+    #       "target_new": {"str": "Islam", "id": "Q432"},
+    #       "target_true": {"str": "Christianity", "id": "Q5043"},
+    #   },
+    #   ...
+    # ]
+
     # Update target and print info
     requests = deepcopy(requests)
     for i, request in enumerate(requests):
@@ -119,7 +131,6 @@ def apply_AlphaEdit_to_model(
         print(f"\n\nLAYER {layer}\n")
         weight_name = f"{hparams.rewrite_module_tmp.format(layer)}.weight"
 
-        # 1. 保存当前层的 W_orig (在应用本层本 chunk 的 delta 之前)
         W_orig_layer = weights[weight_name].detach().cpu()
         if save_weights and current_chunk_weights_dir:
             torch.save(W_orig_layer, current_chunk_weights_dir / f"layer_{layer:02d}_W_orig.pt")
@@ -291,3 +302,15 @@ def get_context_templates(model, tok):
         print(f"Cached context templates {CONTEXT_TEMPLATES_CACHE}")
 
     return CONTEXT_TEMPLATES_CACHE
+
+# an example of CONTEXT_TEMPLATES_CACHE:
+# [
+#  ["{}"], 
+#  [
+#    "The quick brown fox jumps over. {}",
+#     "Therefore, we must conclude that. {}",
+#     "Because the world is constantly changing. {}",
+#     "I believe that we can achieve great things. {}",
+#     "You should always remember to be kind. {}"
+#   ]
+# ]

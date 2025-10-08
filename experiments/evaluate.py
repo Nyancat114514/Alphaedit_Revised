@@ -182,49 +182,6 @@ def main(
                 / f"{ds_name}_layer_{{}}_clamp_{{}}_case_{{}}.npz"
             )
         print(f"Will load cache from {cache_template}")
-    if alg_name == "NSE":
-        cache_template = (
-                KV_DIR
-                / f"{model_name.replace('/', '_')}_{alg_name}"
-                / f"{ds_name}_layer_{{}}_clamp_{{}}_case_{{}}.npz"
-        )
-        for record in ds:
-            # Retrieve k/v pair if already stored in cache
-            cache_fname = (
-                Path(
-                    str(cache_template).format(
-                        hparams.layers[-1], hparams.clamp_norm_factor, record["case_id"]
-                    )
-                )
-                if cache_template is not None
-                else None
-            )
-            data_loaded = False
-            if (
-                cache_fname is not None  # Require cache template
-                and cache_fname.exists()  # Cache file must exist
-            ):
-                continue
-            # Compute k/v pair if not loaded from cache
-            if not data_loaded:
-                context_templates = get_context_templates(model, tok)
-                cur_z = compute_z(
-                    model,
-                    tok,
-                    {"case_id": record["case_id"], **record["requested_rewrite"]},
-                    hparams,
-                    hparams.layers[-1],
-                    context_templates,
-                )
-                if cache_fname is not None:
-                    cache_fname.parent.mkdir(exist_ok=True, parents=True)
-                    np.savez(
-                        cache_fname,
-                        **{
-                            "v_star": cur_z.detach().cpu().numpy(),
-                        },
-                    )
-                    print(f"Cached k/v pair at {cache_fname}")
     if any(alg in alg_name for alg in ["AlphaEdit", "MEMIT_seq", "MEMIT_prune", "NSE"]):
         # Iterate through dataset
         W_out = nethook.get_parameter(model, f"{hparams.rewrite_module_tmp.format(hparams.layers[-1])}.weight")
@@ -233,6 +190,7 @@ def main(
             if alg_name == "AlphaEdit":
                 P = torch.zeros((len(hparams.layers), W_out.shape[0], W_out.shape[0]), device="cpu")
         elif hparams.model_name in ["EleutherAI_gpt-j-6B","Llama3-8B","phi-1.5"]:
+            # W_out.shape = [hidden_size, intermediate_size]
             cache_c = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
             if alg_name == "AlphaEdit":
                 P = torch.zeros((len(hparams.layers), W_out.shape[1], W_out.shape[1]), device="cpu")
@@ -243,7 +201,7 @@ def main(
         for i, layer in enumerate(hparams.layers):
             P[i,:,:] = get_project(model,tok,layer,hparams, run_dir, save_weights)
         if save_weights:
-            torch.save(P, "null_space_project.pt")
+            # torch.save(P, "null_space_project.pt")
             torch.save(P, run_dir / "weights" / "all_layers_P.pt")
     # hs = get_module_input_output_at_words(
     #         model,
