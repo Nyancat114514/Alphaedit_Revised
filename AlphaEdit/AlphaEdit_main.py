@@ -138,6 +138,7 @@ def apply_AlphaEdit_to_model(
 
         # Get current model activations
         layer_ks = compute_ks(model, tok, requests, hparams, layer, context_templates).T
+        
         print(f"Writing {layer_ks.size(1)} key/value pair(s) into layer {layer}")
 
         # Compute residual error
@@ -166,46 +167,12 @@ def apply_AlphaEdit_to_model(
             torch.save(layer_ks.T.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_K1.pt") # (u x d_model)
             torch.save(targets.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_R_chunk_targets.pt") # (d_model x u)
             torch.save(resid.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_R_partial_resid.pt") # (d_model x u)
-
-
-
-
-        # 为了统一，我们从 `weights` 中取出 W_orig, 计算 delta, 然后再加回去
-        # AlphaEdit 的 delta (就是原代码的 upd_matrix)
-        # 注意：原代码直接用 upd_matrix 更新了 weights[weight_name]，我们需要先保存它
-        
-        # 计算 Delta_AlphaEdit (即原代码中的 upd_matrix)
-        # 这个 resid 是已经除以层数的 R_partial
-        delta_alphaedit_term_A = P[i,:,:].cuda().double() @ (layer_ks.double() @ layer_ks.double().T + cache_c[i,:,:].cuda().double()) + \
-                                 hparams.L2 * torch.eye(layer_ks.shape[0], dtype=torch.double, device="cuda")
-        delta_alphaedit_term_B = P[i,:,:].cuda().double() @ layer_ks.double() @ resid.double().T
-        
-        # 使用 torch.linalg.lstsq 来处理可能的奇异矩阵，或者确保矩阵可逆
-        try:
-            # delta_alphaedit_unshaped = torch.linalg.solve(delta_alphaedit_term_A, delta_alphaedit_term_B)
-            # 更稳健的解法，如果A不是方阵或奇异
-            delta_alphaedit_unshaped = torch.linalg.lstsq(delta_alphaedit_term_A, delta_alphaedit_term_B).solution
-
-        except torch.linalg.LinAlgError as e:
-            print(f"Layer {layer} AlphaEdit: Singular matrix encountered. Error: {e}")
-            # 可以尝试使用伪逆，或者跳过这个delta的计算和保存
-            try:
-                A_pinv = torch.linalg.pinv(delta_alphaedit_term_A)
-                delta_alphaedit_unshaped = A_pinv @ delta_alphaedit_term_B
-                print("Used pseudo-inverse for AlphaEdit delta.")
-            except torch.linalg.LinAlgError as e_pinv:
-                print(f"Layer {layer} AlphaEdit: Pseudo-inverse also failed. Error: {e_pinv}. Skipping delta calculation.")
-                delta_alphaedit_unshaped = torch.zeros_like(weights[weight_name].T, dtype=torch.double, device="cuda") #转置因为下面要匹配
-
-        delta_alphaedit_layer = upd_matrix_match_shape(delta_alphaedit_unshaped, weights[weight_name].shape)
-
-        if save_weights and current_chunk_weights_dir:
-            torch.save(delta_alphaedit_layer.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_delta_alphaedit.pt")
-
+            torch.save(upd_matrix.detach().cpu(), current_chunk_weights_dir / f"layer_{layer:02d}_upd_matrix.pt") # (d_model x d_model)
 
 
         print("orig norm", torch.linalg.norm(weights[weight_name]))
         print("upd norm", torch.linalg.norm(upd_matrix))
+        
         with torch.no_grad():
             weights[weight_name][...] = weights[weight_name] + upd_matrix
 
