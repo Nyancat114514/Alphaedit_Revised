@@ -28,7 +28,7 @@ After decompressing it and saving it to the "./data/stats" folder.
 ### An example for editing Llama3 (8B) on counterfact dataset using AlphaEdit
 #### 1. Edit Llama3 (8B) model 
  
-    python3 -m experiments.evaluate     --alg_name=AlphaEdit     --model_name=meta-llama/Meta-Llama-3-8B-Instruct     --hparams_fname=Llama3-8B.json --ds_name=mcf --dataset_size_limit=2000    --num_edits=100 --downstream_eval_steps=5
+CUDA_VISIBLE_DEVICES=3 python3 -m experiments.evaluate     --alg_name=AlphaEdit    --model_name=/data/yichen/yyz/model/llama3-8b-instruct     --hparams_fname=Llama3-8B.json --ds_name=mcf --dataset_size_limit=2000    --num_edits=100 --downstream_eval_steps=5 # --save_weights --print_outputs
 
 This command runs an evaluation script for the AlphaEdit algorithm using the Llama3-8b-instruct. Below are the explanations for each argument:
 
