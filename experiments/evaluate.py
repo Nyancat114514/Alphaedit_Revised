@@ -77,9 +77,12 @@ def main(
     use_cache: bool = False,
     save_weights: bool = False,
     print_outputs: bool = False,
+    comment: str = "No comment provided.",
 ):
     start_time = datetime.now()
     start_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    print(f"Purpose: {comment}")
 
     # Set algorithm-specific variables
     params_class, apply_algo = ALG_DICT[alg_name]
@@ -119,6 +122,9 @@ def main(
         "generation_test_interval": generation_test_interval,
         "conserve_memory": conserve_memory,
         "use_cache": use_cache,
+        "save_weights": save_weights,
+        "print_outputs": print_outputs,
+        "comment": comment,
     }
     # Ensure run_dir is a Path object
     run_dir = Path(run_dir)
@@ -479,6 +485,8 @@ def main(
 
     evaluation_end_time = datetime.now()
 
+
+    print(f"Purpose: {comment}")
     print(f"Training time cost: {training_end_time - start_time}")
     print(f"Evaluation time cost: {evaluation_end_time - training_end_time}")
     print(f"Total time cost: {evaluation_end_time - start_time}")
@@ -638,6 +646,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Set this flag to print model outputs during evaluation."
     )
+    parser.add_argument(
+        "--comment",
+        type=str,
+        default="No comment provided.",
+        help="The purpose or description of this experiment run."
+    )
 
     parser.set_defaults(skip_generation_tests=False, conserve_memory=False)
     args = parser.parse_args()
@@ -657,4 +671,5 @@ if __name__ == "__main__":
         use_cache=args.use_cache,
         save_weights=args.save_weights,
         print_outputs=args.print_outputs,
+        comment=args.comment,
     )
