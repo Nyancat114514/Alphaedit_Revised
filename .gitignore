@@ -3,7 +3,6 @@ null_space_project.pt
 results/
 __pycache__/
 hparams/
-*.json
 *.sh
 
 # Byte-compiled / optimized / DLL files
